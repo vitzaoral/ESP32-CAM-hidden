@@ -83,6 +83,8 @@ BLYNK_CONNECTED()
 // Use flash
 bool send_photo = false;
 
+bool delete_sd_card = false;
+
 // Send one photo to Cloudinary
 BLYNK_WRITE(V0)
 {
@@ -111,6 +113,13 @@ BLYNK_WRITE(V2)
     terminal.println("Restart, bye");
     terminal.flush();
     ESP.restart();
+  }
+  else if (String("delete") == valueFromTerminal)
+  {
+    terminal.clear();
+    terminal.println("DELETE SD CARD - wait max 5 minutes to timer");
+    terminal.flush();
+    delete_sd_card = true;
   }
   else if (valueFromTerminal != "\n" || valueFromTerminal != "\r" || valueFromTerminal != "")
   {
@@ -336,6 +345,14 @@ Ticker timerTakePhoto(takePhoto, 5000);
 
 bool setup_done = false;
 
+bool deleting_in_progress = false;
+
+File root;
+int deleted_count = 0;
+int fail_count = 0;
+String rootpath = "/";
+void rm(File, String);
+
 void setup()
 {
   //disable brownout detector
@@ -407,6 +424,35 @@ void loop()
   Blynk.run();
 }
 
+void deleteAllData()
+{
+  delete_sd_card = false;
+  deleted_count = 0;
+  fail_count = 0;
+  deleting_in_progress = true;
+
+  Serial.println("REMOVE");
+  root = SD_MMC.open(photo_dir);
+
+  timerTakePhoto.pause();
+
+  terminal.println("CLEAR START IN " + String(hour()) + ":" + minute());
+  terminal.flush();
+
+  rm(root, rootpath);
+  SD_MMC.rmdir(photo_dir);
+  SD_MMC.mkdir(photo_dir);
+
+  terminal.println("CLEAR ENDED IN " + String(hour()) + ":" + minute());
+  terminal.println("Deleted files " + String(deleted_count));
+  terminal.println("Failed files " + String(fail_count));
+  terminal.println();
+  terminal.flush();
+
+  timerTakePhoto.resume();
+  deleting_in_progress = false;
+}
+
 void sendDataToBlynk()
 {
   Serial.println("Set values to Blynk");
@@ -425,15 +471,52 @@ void sendDataToBlynk()
   Blynk.virtualWrite(V9, used);
   Blynk.virtualWrite(V10, percent);
 
-  // TODO: promazani karty pri 99%, hlasky do terminalu, pridat do terminalu moznost smazani karty, zprovoznit MAC
-  if (percent > 5.0)
+  if (!deleting_in_progress && (percent > 5.0 || delete_sd_card))
   {
-    Serial.println("REMOVE");
-    SD_MMC.rmdir(photo_dir);
+    deleteAllData();
   }
 }
 
 void takePhoto()
 {
   take_send_photo();
+}
+
+void rm(File dir, String tempPath)
+{
+  while (true)
+  {
+    // keep connection alive, send data
+    timerSendDataToBlynk.update();
+    Blynk.run();
+
+    // delete all..
+    File entry = dir.openNextFile();
+    String localPath;
+
+    if (entry)
+    {
+      localPath = tempPath + entry.name() + '\0';
+      char charBuf[localPath.length()];
+      localPath.toCharArray(charBuf, localPath.length());
+
+      if (SD_MMC.remove(charBuf))
+      {
+        Serial.print(".");
+        //Serial.println(localPath);
+        deleted_count++;
+      }
+      else
+      {
+       // Serial.print("Failed to delete ");
+        //Serial.println(localPath);
+        fail_count++;
+      }
+    }
+    else
+    {
+      // break out of recursion
+      break;
+    }
+  }
 }
