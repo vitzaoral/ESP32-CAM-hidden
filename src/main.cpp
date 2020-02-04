@@ -248,6 +248,7 @@ void take_send_photo()
   Serial.println("Taking picture...");
   camera_fb_t *fb = NULL;
 
+  // TODO: vsechno s LED dat do haje, stejne nejde vypnout
   digitalWrite(GPIO_NUM_4, LOW);
 
   fb = esp_camera_fb_get();
@@ -358,6 +359,7 @@ void setup()
   //disable brownout detector
   WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
 
+  // TODO: asi zbytecne, LED nejde vypnout pro zapis.., overit ze to tu ale nema zustat...
   pinMode(4, INPUT);
   digitalWrite(4, LOW);
   rtc_gpio_hold_dis(GPIO_NUM_4);
@@ -471,7 +473,8 @@ void sendDataToBlynk()
   Blynk.virtualWrite(V9, used);
   Blynk.virtualWrite(V10, percent);
 
-  if (!deleting_in_progress && (percent > 5.0 || delete_sd_card))
+  // delete all photos at 0 AM
+  if (!deleting_in_progress && (hour() == 0 || delete_sd_card))
   {
     deleteAllData();
   }
@@ -508,7 +511,7 @@ void rm(File dir, String tempPath)
       }
       else
       {
-       // Serial.print("Failed to delete ");
+        // Serial.print("Failed to delete ");
         //Serial.println(localPath);
         fail_count++;
       }
